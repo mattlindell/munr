@@ -1,17 +1,28 @@
-"""The ``hugr`` CLI — the primary agent- and human-facing surface (ADR 0001).
+"""The ``hugr`` CLI — the agent- and human-facing surface (ADR 0001).
 
-Verbs: ``hugr fact set|get|list|confirm|reject``. Output is stable and greppable so an agent
-reading it over Bash/PowerShell can parse the result. Exit codes:
+The CLI is the **untrusted** surface: an agent invokes it over Bash/PowerShell, so the CLI
+must never be able to create or promote a Confirmed (injectable) fact. It can only **read**
+and **propose**:
 
-* ``0`` — did what was asked (wrote, confirmed, rejected, listed, got) or a benign no-op
+* ``hugr fact set``  — files a *Pending* proposal (``asserted_by=model``, ``confirmed_at``
+  NULL). It never writes live and never overwrites a Confirmed fact.
+* ``hugr fact get`` / ``hugr fact list`` — read facts.
+
+Confirming and rejecting proposals, and adding a fact as the verified user, are **review
+actions performed out-of-band in the web Console** (PV-4) — never inline in an agent session,
+which is what would reintroduce the model discretion the design removes (CONTEXT.md). Those
+operations live in the core (``FactStore.confirm`` / ``reject`` and the user→live write path)
+for the Console and a future direct-user web endpoint to call; they are deliberately not CLI
+verbs.
+
+Output is stable and greppable so an agent reading it over a shell can parse the result.
+Exit codes:
+
+* ``0`` — read succeeded, or a proposal was filed / was a benign no-op
 * ``2`` — usage error (argparse)
-* ``3`` — refused by policy (a model proposal vs a confirmed fact; rejecting a live fact)
+* ``3`` — refused by policy (the key is already a Confirmed fact; change it in the Console)
 * ``4`` — no such fact
 * ``5`` — the facts database could not be reached
-
-Confirming and rejecting are deliberate human operations — the Console is the authoritative
-surface for them (CONTEXT.md). They live here so the Console and a human at the terminal
-share one code path; an agent should not self-confirm its own proposals.
 """
 
 from __future__ import annotations
@@ -22,7 +33,7 @@ import sys
 import psycopg
 
 from .model import GLOBAL_SCOPE, Assertion, AssertedBy, Fact
-from .rules import ConfirmAction, RejectAction, WriteAction
+from .rules import WriteAction
 from .store import FactStore
 
 EXIT_OK = 0
@@ -52,62 +63,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hugr", description="hugr fact store")
     top = parser.add_subparsers(dest="group", required=True)
 
-    fact = top.add_parser("fact", help="manage stable facts").add_subparsers(
+    fact = top.add_parser("fact", help="read and propose stable facts").add_subparsers(
         dest="verb", required=True
     )
 
-    def add_scope(p: argparse.ArgumentParser) -> None:
+    def add_scope(p: argparse.ArgumentParser, *, default: str | None = GLOBAL_SCOPE) -> None:
         p.add_argument(
             "--scope",
-            default=GLOBAL_SCOPE,
+            default=default,
             help="fact scope ('*' = global, the default; else a project key)",
         )
 
-    p_set = fact.add_parser("set", help="assert or propose a fact value")
+    p_set = fact.add_parser("set", help="propose a fact value (lands pending for Console review)")
     p_set.add_argument("key")
     p_set.add_argument("value")
     add_scope(p_set)
-    p_set.add_argument(
-        "--as",
-        dest="asserted_by",
-        choices=[a.value for a in AssertedBy],
-        default=AssertedBy.USER.value,
-        help="provenance: 'user' writes live/confirmed (default); 'model' lands pending",
-    )
 
     p_get = fact.add_parser("get", help="read a fact by key")
     p_get.add_argument("key")
     add_scope(p_get)
 
     p_list = fact.add_parser("list", help="list facts")
-    p_list.add_argument(
-        "--scope",
-        default=None,  # list spans all scopes unless restricted
-        help="restrict to a scope ('*' = global)",
-    )
+    add_scope(p_list, default=None)  # list spans all scopes unless restricted
     status = p_list.add_mutually_exclusive_group()
     status.add_argument("--pending", action="store_const", const="pending", dest="status")
     status.add_argument("--confirmed", action="store_const", const="confirmed", dest="status")
-
-    p_confirm = fact.add_parser("confirm", help="promote a pending fact to confirmed")
-    p_confirm.add_argument("key")
-    add_scope(p_confirm)
-
-    p_reject = fact.add_parser("reject", help="discard a pending fact")
-    p_reject.add_argument("key")
-    add_scope(p_reject)
 
     return parser
 
 
 def _do_set(store: FactStore, args: argparse.Namespace) -> int:
-    assertion = Assertion(args.scope, args.key, args.value, AssertedBy(args.asserted_by))
+    # The CLI can only ever file a proposal: model provenance, so it never writes live.
+    assertion = Assertion(args.scope, args.key, args.value, AssertedBy.MODEL)
     result = store.set(assertion)
     action = result.decision.action
 
-    if action is WriteAction.WRITE_LIVE:
-        print(f"set (confirmed): {_fmt(result.fact)}" if result.fact else "set (confirmed)")
-        return EXIT_OK
     if action is WriteAction.WRITE_PENDING:
         line = _fmt(result.fact) if result.fact else f"{args.key} = {args.value}"
         print(f"proposed (pending): {line} - confirm in the Console")
@@ -115,11 +105,11 @@ def _do_set(store: FactStore, args: argparse.Namespace) -> int:
     if action is WriteAction.NOOP:
         print(f"no change: {_fmt(result.fact)}" if result.fact else "no change")
         return EXIT_OK
-    # REFUSE_CONFLICT
+    # REFUSE_CONFLICT — a Confirmed fact already holds this key.
     current = result.fact.value if result.fact else "?"
     print(
-        f"refused: '{args.key}' is a confirmed fact ({current}); "
-        "a model proposal cannot overwrite it",
+        f"refused: '{args.key}' is already a confirmed fact ({current}); "
+        "change it in the Console",
         file=sys.stderr,
     )
     return EXIT_REFUSED
@@ -143,36 +133,10 @@ def _do_list(store: FactStore, args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _do_confirm(store: FactStore, args: argparse.Namespace) -> int:
-    action = store.confirm(args.scope, args.key)
-    if action is ConfirmAction.MISSING:
-        return _missing(args.key, args.scope)
-    fact = store.get(args.scope, args.key)
-    verb = "confirmed" if action is ConfirmAction.CONFIRM else "already confirmed"
-    print(f"{verb}: {_fmt(fact)}" if fact else verb)
-    return EXIT_OK
-
-
-def _do_reject(store: FactStore, args: argparse.Namespace) -> int:
-    action = store.reject(args.scope, args.key)
-    if action is RejectAction.MISSING:
-        return _missing(args.key, args.scope)
-    if action is RejectAction.REFUSE_LIVE:
-        print(
-            f"refused: '{args.key}' is confirmed; reject only discards pending facts",
-            file=sys.stderr,
-        )
-        return EXIT_REFUSED
-    print(f"rejected (discarded pending): {args.key}")
-    return EXIT_OK
-
-
 _DISPATCH = {
     "set": _do_set,
     "get": _do_get,
     "list": _do_list,
-    "confirm": _do_confirm,
-    "reject": _do_reject,
 }
 
 

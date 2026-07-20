@@ -1,2 +1,1 @@
-{
-}
+{ "permissions": { "allow": ["Bash(hugr:*)", "Bash(uv run hugr:*)", "PowerShell(hugr:*)"] } }
