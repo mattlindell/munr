@@ -4,7 +4,7 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## Read this first
 
-**hugr** is a fresh venture that *starts* from a fork of
+**munr** is a fresh venture that *starts* from a fork of
 [`daringanitch/claude-memory`](https://github.com/daringanitch/claude-memory) — but it is
 **not** that project and we will diverge heavily. Treat the inherited code as an **organ
 donor, not a dependency**: reuse the parts that fit, replace the ones that don't, and don't
@@ -16,11 +16,11 @@ feel bound by the donor's design.
 
 **Current status (as of the fork):** design is locked, but **no divergence code has been
 written yet**. Everything currently in the tree is the donor's implementation. Do not mistake
-the donor's polished scripts and docs for hugr's spec — they describe the base we are cutting
+the donor's polished scripts and docs for munr's spec — they describe the base we are cutting
 apart.
 
-The name **hugr** is the Old Norse word for the mind — thought, willpower, personality, and
-the seat of emotions. It's deliberately not "yet another memory-X."
+The name **munr** is an Old Norse word for mind, memory, and recollection. It evokes a
+"second raven" on Odin's shoulder and is deliberately not "yet another memory-X."
 
 ## The mission
 
@@ -61,7 +61,7 @@ Storage taxonomy (worst → best for stable atomic facts):
   anything promoted into the deterministic fact store (injected verbatim every turn). Track
   user-stated vs. model-distilled, and gate promotion into the fact tier behind confirmation.
 
-## Where hugr diverges from the inherited base
+## Where munr diverges from the inherited base
 
 | | Plan |
 |---|---|
@@ -194,7 +194,7 @@ Heavy dependencies (sentence-transformers, psycopg2, openai) are mocked by `test
 
 ### Issue tracker
 
-Issues and specs live in **Linear** — team **Photon Ventures** (`PV`), project **Hugr**. Default to the `linearis` CLI (fast path); fall back to the Linear MCP for what the CLI can't do (e.g. creating labels). See `docs/agents/issue-tracker.md`.
+Issues and specs live in **Linear** — team **Photon Ventures** (`PV`), project **Munr**. Default to the `linearis` CLI (fast path); fall back to the Linear MCP for what the CLI can't do (e.g. creating labels). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

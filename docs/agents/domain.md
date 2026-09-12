@@ -25,7 +25,7 @@ This is a **single-context** repo — one `CONTEXT.md` + `docs/adr/` at the repo
 └── mcp-server/
 ```
 
-(Multi-context layout — a root `CONTEXT-MAP.md` pointing at per-context `CONTEXT.md` files — does not apply here. Switch to it only if hugr later splits into separately-modeled subsystems.)
+(Multi-context layout — a root `CONTEXT-MAP.md` pointing at per-context `CONTEXT.md` files — does not apply here. Switch to it only if munr later splits into separately modeled subsystems.)
 
 ## Use the glossary's vocabulary
 

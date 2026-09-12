@@ -26,9 +26,9 @@ Both tools resolve teams, projects, and labels **by name**, so use these names d
 | | Value |
 | --- | --- |
 | **Team** | Photon Ventures — key `PV` |
-| **Project** | Hugr ("Agentic memory") |
+| **Project** | Munr ("Agentic memory") |
 
-Always create issues **scoped to the Hugr project and the Photon Ventures team** unless told otherwise.
+Always create issues **scoped to the Munr project and the Photon Ventures team** unless told otherwise.
 
 > **Resolved workspace IDs are not committed** (they're unique to this Linear workspace and this
 > repo is public). If you need the raw team/project/status/label UUIDs — to skip a lookup or to
@@ -47,16 +47,16 @@ The five **triage roles** are Linear *labels*, not statuses — see `triage-labe
 
 Each operation lists the **CLI (default)** then the **MCP (fallback)**.
 
-- **Create an issue**: `linearis issues create "<title>" --team PV --project Hugr --description "<md>" [--labels a,b] [--status "<name>"]` · MCP `save_issue` with `title`, `description` (real newlines, not `\n`), `team` = `PV`, `project` = `Hugr`.
+- **Create an issue**: `linearis issues create "<title>" --team PV --project Munr --description "<md>" [--labels a,b] [--status "<name>"]` · MCP `save_issue` with `title`, `description` (real newlines, not `\n`), `team` = `PV`, `project` = `Munr`.
 - **Read an issue**: `linearis issues read PV-<n> --with-comment-threads` · MCP `get_issue` + `list_comments`.
-- **List / search issues**: `linearis issues list --team PV --project Hugr [--label … --status … --assignee …]` or `linearis issues search "<query>"` · MCP `list_issues`.
+- **List / search issues**: `linearis issues list --team PV --project Munr [--label … --status … --assignee …]` or `linearis issues search "<query>"` · MCP `list_issues`.
 - **Comment on an issue**: `linearis issues discuss PV-<n> --body "<md>"` (start a thread); reply with `linearis issues reply <thread-id> --body "…"` · MCP `save_comment`.
 - **Apply / change labels or status**: `linearis issues update PV-<n> --labels <names> [--label-mode add] [--status "<name>"]` · MCP `save_issue` with the new `labels`/`state`. (Use `--label-mode add` to append rather than overwrite.)
 - **Close**: `linearis issues update PV-<n> --status Done` (or `Canceled`) · MCP `save_issue` transitioning `state`.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a Linear issue in the Hugr project — `linearis issues create … --team PV --project Hugr` (MCP `save_issue` fallback).
+Create a Linear issue in the Munr project — `linearis issues create … --team PV --project Munr` (MCP `save_issue` fallback).
 
 ## When a skill says "fetch the relevant ticket"
 
@@ -73,7 +73,7 @@ Used by `/wayfinder`. Model the **map** and its **child tickets** as Linear issu
 Wayfinder labels are a workspace-level **"Wayfinder" label group** with children named `wayfinder:map`, `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, `wayfinder:task` — apply the full prefixed name. (These already exist workspace-wide; no seeding needed.)
 
 - **Map**: a single issue labeled `wayfinder:map` holding the Notes / Decisions-so-far / Fog body.
-- **Child ticket**: an issue linked to the map as a Linear **sub-issue** via `linearis issues create "<title>" --team PV --project Hugr --parent-ticket PV-<map> --labels wayfinder:<type>` (MCP `save_issue` with `parent` as fallback), where `<type>` is `research` / `prototype` / `grilling` / `task`. Once claimed, assign the ticket to the driving dev.
+- **Child ticket**: an issue linked to the map as a Linear **sub-issue** via `linearis issues create "<title>" --team PV --project Munr --parent-ticket PV-<map> --labels wayfinder:<type>` (MCP `save_issue` with `parent` as fallback), where `<type>` is `research` / `prototype` / `grilling` / `task`. Once claimed, assign the ticket to the driving dev.
 - **Blocking**: Linear's native **blocks / blocked-by relations** — `linearis issues update PV-<child> --blocked-by PV-<blocker>` (MCP fallback). A child is unblocked when every blocker is `Done`/`Canceled`. Query blocked children with `linearis issues list --has-blockers`. Where a relation can't be created, fall back to a `Blocked by: PV-<n>, PV-<n>` line at the top of the child body.
 - **Frontier query**: `linearis issues list --team PV --parent PV-<map>` for the map's open sub-issues (drop completed/canceled statuses); drop any with an open blocker (`--has-blockers` marks these) or an assignee; first in map order wins.
 - **Claim**: `linearis issues update PV-<n> --assignee <me>` — the session's first write.
