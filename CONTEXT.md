@@ -1,6 +1,6 @@
-# Hugr
+# Munr
 
-The domain vocabulary for **hugr** — a persistent memory store whose job is to stop the model
+The domain vocabulary for **munr** — a persistent memory store whose job is to stop the model
 from confabulating stable user facts. This glossary pins the terms that acquired a precise
 meaning while designing the fact tier and its injection path. For *direction and rationale*, see
 `docs/memory-store-handoff.md`; for *decisions*, see `docs/adr/`. This file is the **language**.
@@ -118,6 +118,6 @@ Worst → best for stable atomic Facts:
 ## Flagged ambiguities
 
 - "memory" was overloaded (the project, the table, the tier). Resolved: **Memory** = the episodic
-  tier only; the product is **hugr**; the fuzzy table is `memories`; a stable datum is a **Fact**.
+  tier only; the product is **munr**; the fuzzy table is `memories`; a stable datum is a **Fact**.
 - "project" is ambiguous between a Fact's **Fact Scope** and the unresolved **Scope Identity**
   problem — keep them distinct.
