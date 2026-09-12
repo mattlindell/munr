@@ -1,11 +1,11 @@
-# hugr
+# munr
 
 *Old Norse for the mind: thought, willpower, personality, and the seat of emotions.*
 
 A persistent memory system for Claude Code, built to solve one problem well: **stop the model
 from confabulating stable facts about you.**
 
-> **Status: early.** hugr starts from a fork of
+> **Status: early.** munr starts from a fork of
 > [`daringanitch/claude-memory`](https://github.com/daringanitch/claude-memory) and diverges
 > from it heavily. The design is locked; the divergence build is just beginning. The code
 > currently in the tree is the inherited base (the "organ donor"), not the finished system.
@@ -37,7 +37,7 @@ tier where the model has no discretion to skip them.
 
 ## Lineage
 
-hugr is an **organ donor transplant**, not a fork in the maintain-upstream sense. From
+munr is an **organ donor transplant**, not a fork in the maintain-upstream sense. From
 [`daringanitch/claude-memory`](https://github.com/daringanitch/claude-memory) (MIT) we keep the
 FastMCP server and its tool surface, the hybrid keyword+semantic search, the LLM-free
 behavioral signal extractor, and the write-hygiene machinery (dedup, dry-run write guard, soft

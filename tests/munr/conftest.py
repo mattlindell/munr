@@ -1,4 +1,4 @@
-"""Fixtures for hugr's store integration tests.
+"""Fixtures for munr's store integration tests.
 
 Each test runs inside a transaction that is rolled back, so nothing persists to the real
 facts database. If the database is unreachable (no Docker / no creds), the suite skips —
@@ -13,8 +13,8 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 
-from hugr import config
-from hugr.store import FactStore
+from munr import config
+from munr.store import FactStore
 
 #: A dedicated scope so tests never read or clobber real global ('*') facts.
 TEST_SCOPE = "test:pv-2"

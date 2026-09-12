@@ -1,1 +1,1 @@
-{ "permissions": { "allow": ["Bash(hugr:*)", "Bash(uv run hugr:*)", "PowerShell(hugr:*)"] } }
+{ "permissions": { "allow": ["Bash(munr:*)", "Bash(uv run munr:*)", "PowerShell(munr:*)"] } }

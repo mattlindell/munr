@@ -1,5 +1,5 @@
-"""The Fact store: a thin executor that reads current state, asks :mod:`hugr.rules` what to
-do, and runs the SQL the decision implies. All policy lives in :mod:`hugr.rules`; this layer
+"""The Fact store: a thin executor that reads current state, asks :mod:`munr.rules` what to
+do, and runs the SQL the decision implies. All policy lives in :mod:`munr.rules`; this layer
 only touches the database.
 
 The mutating SQL also enforces the ADR 0002 invariants defensively (``ON CONFLICT ... WHERE

@@ -1,7 +1,7 @@
-# hugr facts store — dedicated pgvector/pgvector:pg17 instance (PV-1, ADR 0005)
+# munr facts store — dedicated pgvector/pgvector:pg17 instance (PV-1, ADR 0005)
 #
 # A desktop-local Postgres, deliberately ISOLATED from the shared home-prod
-# cluster (`postdb1`, pg14.6) so hugr's bursty workload — bulk import,
+# cluster (`postdb1`, pg14.6) so munr's bursty workload — bulk import,
 # distillation write storms, HNSW index builds — has zero blast radius on
 # household-critical infra, and so installing the pgvector extension is a
 # change to *this* box, not the production cluster.
@@ -19,21 +19,21 @@
 services:
   facts-db:
     image: pgvector/pgvector:pg17
-    container_name: hugr-facts-db
+    container_name: munr-facts-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: hugr
-      POSTGRES_USER: hugr
+      POSTGRES_DB: munr
+      POSTGRES_USER: munr
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/facts/.env — no default password ships}
     ports:
-      # Host-side port is configurable (HUGR_FACTS_PORT) but always pinned to
+      # Host-side port is configurable (MUNR_FACTS_PORT) but always pinned to
       # loopback. Do not change 127.0.0.1 to 0.0.0.0.
-      - "127.0.0.1:${HUGR_FACTS_PORT:-5432}:5432"
+      - "127.0.0.1:${MUNR_FACTS_PORT:-5432}:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hugr -d hugr"]
+      test: ["CMD-SHELL", "pg_isready -U munr -d munr"]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -5,9 +5,9 @@ Skips when the database is unreachable (see conftest). Every test is rolled back
 
 from __future__ import annotations
 
-from hugr.model import Assertion, AssertedBy
-from hugr.rules import ConfirmAction, RejectAction, WriteAction
-from hugr.store import FactStore
+from munr.model import Assertion, AssertedBy
+from munr.rules import ConfirmAction, RejectAction, WriteAction
+from munr.store import FactStore
 
 from .conftest import TEST_SCOPE
 
