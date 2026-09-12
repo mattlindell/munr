@@ -1,9 +1,9 @@
-"""Connection configuration for the hugr fact store.
+"""Connection configuration for the munr fact store.
 
 Resolution order for the DSN:
 
-1. ``HUGR_DATABASE_URL`` — a full libpq connection string, if set.
-2. Otherwise assembled from ``HUGR_DB_{HOST,PORT,NAME,USER,PASSWORD}`` with defaults that
+1. ``MUNR_DATABASE_URL`` — a full libpq connection string, if set.
+2. Otherwise assembled from ``MUNR_DB_{HOST,PORT,NAME,USER,PASSWORD}`` with defaults that
    match the dedicated desktop pgvector instance (ADR 0005).
 
 The password is never defaulted in code — the donor's hard-coded credential is exactly the
@@ -18,8 +18,8 @@ from psycopg.conninfo import make_conninfo
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = "5432"
-DEFAULT_NAME = "hugr"
-DEFAULT_USER = "hugr"
+DEFAULT_NAME = "munr"
+DEFAULT_USER = "munr"
 
 
 def database_url() -> str:
@@ -29,17 +29,17 @@ def database_url() -> str:
     containing URL-special characters (``@``, ``/``, ``:``, spaces, ...) is escaped correctly
     instead of corrupting the connection string.
     """
-    url = os.environ.get("HUGR_DATABASE_URL")
+    url = os.environ.get("MUNR_DATABASE_URL")
     if url:
         return url
 
     params: dict[str, str] = {
-        "host": os.environ.get("HUGR_DB_HOST", DEFAULT_HOST),
-        "port": os.environ.get("HUGR_DB_PORT", DEFAULT_PORT),
-        "dbname": os.environ.get("HUGR_DB_NAME", DEFAULT_NAME),
-        "user": os.environ.get("HUGR_DB_USER", DEFAULT_USER),
+        "host": os.environ.get("MUNR_DB_HOST", DEFAULT_HOST),
+        "port": os.environ.get("MUNR_DB_PORT", DEFAULT_PORT),
+        "dbname": os.environ.get("MUNR_DB_NAME", DEFAULT_NAME),
+        "user": os.environ.get("MUNR_DB_USER", DEFAULT_USER),
     }
-    password = os.environ.get("HUGR_DB_PASSWORD")
+    password = os.environ.get("MUNR_DB_PASSWORD")
     if password:
         params["password"] = password
     return make_conninfo(**params)

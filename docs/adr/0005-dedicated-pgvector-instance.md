@@ -7,7 +7,7 @@
 
 The handoff assumed a fresh PostgreSQL 16. The user's actual home Postgres (`postdb1` on Legion,
 `192.168.20.200`, behind pgbouncer) is **`postgres:14.6` and shared production** — it runs Home
-Assistant, Grafana, Mealie, Paperless, and LiteLLM. hugr's workload is bursty and hostile to a
+Assistant, Grafana, Mealie, Paperless, and LiteLLM. munr's workload is bursty and hostile to a
 shared box: bulk history import, distillation write storms, and an HNSW index build that pins
 CPU/IO. Installing the `pgvector` extension is a server-level change on the cluster that runs
 household automation. The estate is also **GitOps / pull-based** — changes to it flow through the
@@ -18,7 +18,7 @@ does **not** apply.)
 
 ## Decision
 
-Run hugr's store as a **dedicated pgvector instance**, isolated from `postdb1`:
+Run munr's store as a **dedicated pgvector instance**, isolated from `postdb1`:
 
 - **0.5:** a `pgvector/pgvector:pg17` container **on the desktop** (localhost — no LAN hop for the
   DB, no GitOps dependency to stand it up). The extension is installed so the schema is ready;

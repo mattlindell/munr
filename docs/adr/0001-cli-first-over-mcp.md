@@ -7,7 +7,7 @@
 
 The donor centers everything on a FastMCP server (`mcp-server/server.py`): the model-facing tool
 surface, the REST API, and the web UI all hang off the `@mcp` object, served over SSE on `:3333`.
-hugr runs almost entirely **locally** — the app (core + CLI + hook) on the Windows desktop, talking
+munr runs almost entirely **locally** — the app (core + CLI + hook) on the Windows desktop, talking
 over the LAN to Postgres and LiteLLM. The user is opposed to MCP in principle for a local tool, and
 the injection hook — the component that actually fixes the bug — is CLI-shaped anyway (a script
 that reads Facts).
@@ -21,9 +21,9 @@ nothing on correctness.
 
 Adopt a **core-library + CLI-first** architecture:
 
-- A `hugr` **core package** holds all logic (Facts, provenance, snapshot, later: search, dedup).
-- A **CLI** is the primary agent- and human-facing surface (`hugr fact set/get/list/confirm`,
-  later `hugr search/save`), **allowlisted in `settings.json`** so calls don't prompt.
+- A `munr` **core package** holds all logic (Facts, provenance, snapshot, later: search, dedup).
+- A **CLI** is the primary agent- and human-facing surface (`munr fact set/get/list/confirm`,
+  later `munr search/save`), **allowlisted in `settings.json`** so calls don't prompt.
 - The **Injection Hook** is a thin CLI/shared-code path.
 - A **thin HTTP server** exists **only** to serve the web Console (`ui.html` + read/confirm API).
 - **MCP is dropped.** Because CLI and MCP would both be thin frontends over the same core, an MCP

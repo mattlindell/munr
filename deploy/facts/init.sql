@@ -1,4 +1,4 @@
--- hugr facts store — schema initialization (PV-1)
+-- munr facts store — schema initialization (PV-1)
 --
 -- Runs once, on first boot of the dedicated pgvector/pgvector:pg17 container
 -- (mounted into /docker-entrypoint-initdb.d). Defines the keyed `facts` table

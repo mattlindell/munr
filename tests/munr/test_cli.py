@@ -1,4 +1,4 @@
-"""CLI tests: drive ``hugr.cli.run`` end to end through an injected store.
+"""CLI tests: drive ``munr.cli.run`` end to end through an injected store.
 
 The CLI is read-and-propose-only: ``set`` always lands Pending, and there are no confirm/
 reject verbs (those are Console actions, tested directly against the store). Store-backed
@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from hugr.cli import EXIT_NOT_FOUND, EXIT_OK, EXIT_REFUSED, run
-from hugr.model import Assertion, AssertedBy
-from hugr.store import FactStore
+from munr.cli import EXIT_NOT_FOUND, EXIT_OK, EXIT_REFUSED, run
+from munr.model import Assertion, AssertedBy
+from munr.store import FactStore
 
 from .conftest import TEST_SCOPE
 

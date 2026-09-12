@@ -9,8 +9,8 @@ from datetime import datetime
 
 import pytest
 
-from hugr.model import GLOBAL_SCOPE, Assertion, AssertedBy, Fact
-from hugr.rules import (
+from munr.model import GLOBAL_SCOPE, Assertion, AssertedBy, Fact
+from munr.rules import (
     ConfirmAction,
     RejectAction,
     WriteAction,

@@ -2,7 +2,7 @@
 Integration test for the PV-1 dedicated pgvector facts store.
 
 Exercises the acceptance criterion from PV-1 / ADR 0002 against a live
-`hugr-facts-db` container: the pgvector extension is installed, the `facts`
+`munr-facts-db` container: the pgvector extension is installed, the `facts`
 table matches the ADR 0002 shape, and a fresh psql can insert and read the
 canonical global fact ('*', 'location', 'Portland, OR metro').
 
@@ -21,9 +21,9 @@ import subprocess
 
 import pytest
 
-CONTAINER = "hugr-facts-db"
-DB_USER = "hugr"
-DB_NAME = "hugr"
+CONTAINER = "munr-facts-db"
+DB_USER = "munr"
+DB_NAME = "munr"
 
 # The canonical global fact from PV-1's acceptance criterion.
 FACT_SCOPE = "*"

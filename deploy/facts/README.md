@@ -1,4 +1,4 @@
-# hugr facts store
+# munr facts store
 
 A dedicated **`pgvector/pgvector:pg17`** container holding the keyed `facts` table
 — the deterministic Fact tier that stops the model confabulating stable user
@@ -20,7 +20,7 @@ docker compose -f deploy/facts/docker-compose.yml up -d --wait
 ```
 
 The store binds to **loopback only** (`127.0.0.1:5432`, override with
-`HUGR_FACTS_PORT`). Never publish it to the LAN. `POSTGRES_PASSWORD` is required —
+`MUNR_FACTS_PORT`). Never publish it to the LAN. `POSTGRES_PASSWORD` is required —
 the stack refuses to start without it, so no default password ships.
 
 ```bash
@@ -33,10 +33,10 @@ on first boot of an empty data directory.
 
 ## Connection string
 
-For host-side clients (e.g. the hugr CLI in PV-2):
+For host-side clients (e.g. the munr CLI in PV-2):
 
 ```
-postgresql://hugr:<POSTGRES_PASSWORD>@localhost:5432/hugr
+postgresql://munr:<POSTGRES_PASSWORD>@localhost:5432/munr
 ```
 
 ## Acceptance (PV-1)
@@ -45,11 +45,11 @@ A fresh psql can insert and read the canonical global fact. Over the container's
 local socket (trusted — no password needed):
 
 ```bash
-docker exec hugr-facts-db psql -U hugr -d hugr -c \
+docker exec munr-facts-db psql -U munr -d munr -c \
   "INSERT INTO facts (scope, key, value, asserted_by, confirmed_at)
    VALUES ('*', 'location', 'Portland, OR metro', 'user', NOW());"
 
-docker exec hugr-facts-db psql -U hugr -d hugr -tAc \
+docker exec munr-facts-db psql -U munr -d munr -tAc \
   "SELECT value FROM facts WHERE scope = '*' AND key = 'location';"
 # -> Portland, OR metro
 ```

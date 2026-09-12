@@ -1,12 +1,12 @@
-"""The ``hugr`` CLI — the agent- and human-facing surface (ADR 0001).
+"""The ``munr`` CLI — the agent- and human-facing surface (ADR 0001).
 
 The CLI is the **untrusted** surface: an agent invokes it over Bash/PowerShell, so the CLI
 must never be able to create or promote a Confirmed (injectable) fact. It can only **read**
 and **propose**:
 
-* ``hugr fact set``  — files a *Pending* proposal (``asserted_by=model``, ``confirmed_at``
+* ``munr fact set``  — files a *Pending* proposal (``asserted_by=model``, ``confirmed_at``
   NULL). It never writes live and never overwrites a Confirmed fact.
-* ``hugr fact get`` / ``hugr fact list`` — read facts.
+* ``munr fact get`` / ``munr fact list`` — read facts.
 
 Confirming and rejecting proposals, and adding a fact as the verified user, are **review
 actions performed out-of-band in the web Console** (PV-4) — never inline in an agent session,
@@ -60,7 +60,7 @@ def _missing(key: str, scope: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="hugr", description="hugr fact store")
+    parser = argparse.ArgumentParser(prog="munr", description="munr fact store")
     top = parser.add_subparsers(dest="group", required=True)
 
     fact = top.add_parser("fact", help="read and propose stable facts").add_subparsers(
@@ -152,7 +152,7 @@ def run(argv: list[str], store: FactStore | None = None) -> int:
             # Don't echo the raw driver error: the resolved DSN can carry the password.
             print(
                 "cannot reach the facts database "
-                "(check it is running and HUGR_DATABASE_URL / HUGR_DB_* are set)",
+                "(check it is running and MUNR_DATABASE_URL / MUNR_DB_* are set)",
                 file=sys.stderr,
             )
             return EXIT_NO_DB
