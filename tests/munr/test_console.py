@@ -34,7 +34,7 @@ class SeedableStore(console.FactSource, Protocol):
     def set(self, assertion: Assertion) -> object: ...
 
 
-class MemoryStore:
+class FakeFactStore:
     def __init__(self, snapshot_path: Path) -> None:
         self.snapshot_path = snapshot_path
         self.facts: dict[tuple[str, str], Fact] = {}
@@ -87,10 +87,14 @@ class Console:
     store: SeedableStore | None
     snapshot_path: Path
 
-    def call(self, method: str, path: str, token: str | None = None) -> Response:
+    def call(
+        self, method: str, path: str, token: str | None = None, host: str | None = None
+    ) -> Response:
         req = urllib.request.Request(self.base + path, method=method)
         if token is not None:
             req.add_header(console.TOKEN_HEADER, token)
+        if host is not None:
+            req.add_header("Host", host)
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 return Response(resp.status, dict(resp.headers), resp.read())
@@ -135,7 +139,7 @@ def serve(opener: console.StoreOpener, token: str) -> Iterator[str]:
 def app(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Console]:
     store: SeedableStore
     if request.param == "memory":
-        store = MemoryStore(tmp_path / "snapshot.txt")
+        store = FakeFactStore(tmp_path / "snapshot.txt")
     else:
         store = request.getfixturevalue("snapshotting_store")
     snap = store.snapshot_path
@@ -321,6 +325,67 @@ def test_unreachable_database_is_a_json_503(down: Console, method: str, path: st
 
 def test_unreachable_database_still_serves_the_page(down: Console) -> None:
     assert down.get("/ui").status == 200
+
+
+class BrokenStore:
+    def list(self, scope: str | None = None, status: str | None = None) -> list[Fact]:
+        raise psycopg.errors.UndefinedTable("relation \"facts\" does not exist")
+
+    def confirm(self, scope: str, key: str) -> ConfirmAction:
+        raise OSError("snapshot directory is read-only")
+
+    def reject(self, scope: str, key: str) -> RejectAction:
+        raise psycopg.DataError("bad byte")
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/facts"),
+        ("POST", "/api/facts/%2A/location/confirm"),
+        ("POST", "/api/facts/%2A/location/reject"),
+    ],
+)
+def test_other_store_failures_are_a_json_500(method: str, path: str) -> None:
+    def opener() -> AbstractContextManager[console.FactSource]:
+        return nullcontext(BrokenStore())
+
+    token = console.new_token()
+    with serve(opener, token) as base:
+        resp = Console(base, token, None, Path()).call(method, path, token)
+
+    assert resp.status == 500
+    assert set(resp.json()) == {"error"}
+
+
+# A page on another origin can rebind its DNS name to 127.0.0.1; only loopback names are served.
+@pytest.mark.parametrize("path", ["/ui", "/api/facts", "/api/facts/pending"])
+def test_foreign_host_header_is_refused(app: Console, path: str) -> None:
+    port = app.base.rsplit(":", 1)[1]
+
+    assert app.call("GET", path, host=f"evil.example:{port}").status == 403
+    assert app.call("GET", path, host=f"localhost:{port}").status == 200
+
+
+def test_foreign_host_cannot_mutate_even_with_the_token(app: Console) -> None:
+    app.seed(GLOBAL_SCOPE, "pv4-proposed", "maybe", confirmed=False)
+    path = "/api/facts/%2A/pv4-proposed/confirm"
+
+    assert app.call("POST", path, app.token, host="evil.example").status == 403
+    assert (GLOBAL_SCOPE, "pv4-proposed") in app.keys("/api/facts/pending")
+
+
+def test_a_second_console_cannot_share_the_port() -> None:
+    def opener() -> AbstractContextManager[console.FactSource]:
+        raise AssertionError("binding must not open the store")
+
+    first = console.make_server(opener, console.new_token(), port=0)
+    try:
+        with pytest.raises(OSError):
+            port = first.server_address[1]
+            console.make_server(opener, console.new_token(), port=port).server_close()
+    finally:
+        first.server_close()
 
 
 def test_server_binds_loopback_only() -> None:

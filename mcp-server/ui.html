@@ -6,6 +6,18 @@
   <title>Claude Memory</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;500;600;700;800;900&family=Cardo:ital@1&display=swap" rel="stylesheet">
+  <script>
+    // Plain script ahead of the CDN tags, so the token leaves the address bar even if they fail to load.
+    var MUNR_TOKEN_KEY = 'munr_console_token';
+    (function () {
+      var url = new URL(window.location.href);
+      var token = url.searchParams.get('token');
+      if (!token) return;
+      sessionStorage.setItem(MUNR_TOKEN_KEY, token);
+      url.searchParams.delete('token');
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    })();
+  </script>
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -53,15 +65,6 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-const TOKEN_KEY = 'munr_console_token';
-(function captureToken() {
-  const url = new URL(window.location.href);
-  const token = url.searchParams.get('token');
-  if (!token) return;
-  sessionStorage.setItem(TOKEN_KEY, token);
-  url.searchParams.delete('token');
-  window.history.replaceState(null, '', url.pathname + url.search + url.hash);
-})();
 
 async function getJSON(url, options) {
   const r = await fetch(url, options);
@@ -640,7 +643,7 @@ function FactsSection() {
   useEffect(() => { load().then(ok => ok && setError(null)); }, [load]);
 
   async function act(fact, verb) {
-    const token = sessionStorage.getItem(TOKEN_KEY);
+    const token = sessionStorage.getItem(MUNR_TOKEN_KEY);
     if (!token) {
       setError('This tab has no Console Token. Open the URL that munr-console printed at launch.');
       return;
@@ -903,8 +906,8 @@ function App() {
   async function handleSearch(q) {
     setQuery(q);
     if (!q.trim()) {
-      const rows = await fetch('/api/memories?limit=20').then(r => r.json()).catch(() => []);
-      setResults(rows.map(m => ({ ...m, sim: null })));
+      const rows = await getJSON('/api/memories?limit=20').catch(() => []);
+      setResults(asList(rows).map(m => ({ ...m, sim: null })));
       setSearchMeta(null);
       return;
     }

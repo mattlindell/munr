@@ -14,6 +14,8 @@ import argparse
 import hmac
 import json
 import secrets
+import socket
+import sys
 import webbrowser
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -31,6 +33,7 @@ from .rules import ConfirmAction, RejectAction
 from .store import FactStore
 
 HOST = "127.0.0.1"
+_LOOPBACK_NAMES = frozenset({HOST, "localhost"})
 DEFAULT_PORT = 3334
 TOKEN_HEADER = "X-Munr-Token"
 
@@ -80,7 +83,19 @@ def _to_json(fact: Fact) -> dict[str, str | None]:
     }
 
 
-def make_server(open_store: StoreOpener, token: str, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
+class _ConsoleServer(ThreadingHTTPServer):
+    # Windows SO_REUSEADDR lets a second socket bind a live port and take its requests.
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def make_server(
+    open_store: StoreOpener, token: str, port: int = DEFAULT_PORT
+) -> ThreadingHTTPServer:
     """A loopback-only server whose handlers open a store per request via ``open_store``."""
     ui = _ui_html()
 
@@ -109,9 +124,21 @@ def make_server(open_store: StoreOpener, token: str, port: int = DEFAULT_PORT) -
             except psycopg.OperationalError:
                 self._error(HTTPStatus.SERVICE_UNAVAILABLE, "facts database unreachable")
                 return
+            except (psycopg.Error, OSError) as exc:
+                print(f"munr Console: {self.command} failed: {type(exc).__name__}", file=sys.stderr)
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "the request failed")
+                return
             self._json(status, payload)
 
+        def _foreign_host(self) -> bool:
+            if urlsplit(f"//{self.headers.get('Host', '')}").hostname in _LOOPBACK_NAMES:
+                return False
+            self._error(HTTPStatus.FORBIDDEN, "the Console only answers to localhost")
+            return True
+
         def do_GET(self) -> None:
+            if self._foreign_host():
+                return
             url = urlsplit(self.path)
             if url.path in ("/", "/ui"):
                 self._send(HTTPStatus.OK, ui, "text/html; charset=utf-8")
@@ -132,6 +159,8 @@ def make_server(open_store: StoreOpener, token: str, port: int = DEFAULT_PORT) -
                 self._error(HTTPStatus.NOT_FOUND, "not found")
 
         def do_POST(self) -> None:
+            if self._foreign_host():
+                return
             target = _fact_action(urlsplit(self.path).path)
             if target is None:
                 self._error(HTTPStatus.NOT_FOUND, "not found")
@@ -143,12 +172,14 @@ def make_server(open_store: StoreOpener, token: str, port: int = DEFAULT_PORT) -
             scope, key, verb = target
             self._with_store(lambda s: _apply(s, scope, key, verb))
 
-    return ThreadingHTTPServer((HOST, port), Handler)
+    return _ConsoleServer((HOST, port), Handler)
 
 
 def _fact_action(path: str) -> tuple[str, str, str] | None:
     parts = path.split("/")
-    if len(parts) != 6 or parts[:3] != ["", "api", "facts"] or parts[5] not in ("confirm", "reject"):
+    if len(parts) != 6 or parts[:3] != ["", "api", "facts"]:
+        return None
+    if parts[5] not in ("confirm", "reject"):
         return None
     scope, key = unquote(parts[3]), unquote(parts[4])
     if not scope or not key:
