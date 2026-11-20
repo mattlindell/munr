@@ -9,6 +9,7 @@ reachability check is session-scoped so a down database costs one probe, not one
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -37,4 +38,15 @@ def store(dsn: str) -> Iterator[FactStore]:
         yield FactStore(conn)
     finally:
         conn.rollback()  # discard everything this test wrote
+        conn.close()
+
+
+@pytest.fixture
+def snapshotting_store(dsn: str, tmp_path: Path) -> Iterator[FactStore]:
+    """A rolled-back store that regenerates its Snapshot into a temp file, never the real one."""
+    conn = psycopg.connect(dsn, autocommit=False, connect_timeout=2)
+    try:
+        yield FactStore(conn, snapshot_path=tmp_path / "snapshot.txt")
+    finally:
+        conn.rollback()
         conn.close()

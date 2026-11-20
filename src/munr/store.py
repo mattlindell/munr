@@ -10,12 +10,13 @@ changes between the policy read and the write.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
 
-from . import config
-from .model import Assertion, AssertedBy, Fact
+from . import config, snapshot
+from .model import GLOBAL_SCOPE, Assertion, AssertedBy, Fact
 from .rules import (
     ConfirmAction,
     RejectAction,
@@ -52,16 +53,22 @@ def _row_to_fact(row: dict[str, object] | None) -> Fact | None:
 
 
 class FactStore:
-    """CRUD + confirm/reject over the ``facts`` table, gated by the ADR 0002 policy."""
+    """CRUD + confirm/reject over the ``facts`` table, gated by the ADR 0002 policy.
 
-    def __init__(self, conn: psycopg.Connection) -> None:
+    With a ``snapshot_path``, every mutation regenerates the Snapshot the Injection Hook reads
+    (ADR 0003), so a change is injected on the very next turn. Without one, no Snapshot is
+    written.
+    """
+
+    def __init__(self, conn: psycopg.Connection, snapshot_path: Path | None = None) -> None:
         self._conn = conn
+        self.snapshot_path = snapshot_path
 
     @classmethod
     def connect(cls, dsn: str | None = None) -> FactStore:
-        """Open an autocommit connection to the facts database."""
+        """Open an autocommit connection that maintains the desktop Snapshot."""
         conn = psycopg.connect(dsn or config.database_url(), autocommit=True)
-        return cls(conn)
+        return cls(conn, snapshot_path=snapshot.default_path())
 
     def close(self) -> None:
         self._conn.close()
@@ -101,6 +108,21 @@ class FactStore:
             cur.execute(f"SELECT {_COLUMNS} FROM facts{where} ORDER BY scope, key", params)
             return [f for row in cur.fetchall() if (f := _row_to_fact(row)) is not None]
 
+    # --- snapshot ---
+
+    def regenerate_snapshot(self) -> None:
+        if self.snapshot_path is not None:
+            snapshot.write(self.snapshot_path, self.list(scope=GLOBAL_SCOPE, status="confirmed"))
+
+    def refresh_snapshot_if_stale(self, ttl: int | None = None) -> bool:
+        """TTL backstop for out-of-band changes (restore, manual psql). Never run in the hook."""
+        if self.snapshot_path is None:
+            return False
+        if not snapshot.is_stale(self.snapshot_path, snapshot.ttl_seconds() if ttl is None else ttl):
+            return False
+        self.regenerate_snapshot()
+        return True
+
     # --- writes ---
 
     def set(self, assertion: Assertion) -> WriteResult:
@@ -115,6 +137,8 @@ class FactStore:
         else:  # NOOP or REFUSE_CONFLICT — the existing row stands untouched
             fact = existing
 
+        if decision.wrote:
+            self.regenerate_snapshot()
         return WriteResult(decision=decision, fact=fact)
 
     def _upsert_live(self, a: Assertion) -> Fact | None:
@@ -162,6 +186,7 @@ class FactStore:
                 "WHERE scope = %s AND key = %s AND confirmed_at IS NULL",
                 (scope, key),
             )
+            self.regenerate_snapshot()
         return action
 
     def reject(self, scope: str, key: str) -> RejectAction:
@@ -172,4 +197,5 @@ class FactStore:
                 "DELETE FROM facts WHERE scope = %s AND key = %s AND confirmed_at IS NULL",
                 (scope, key),
             )
+            self.regenerate_snapshot()
         return action
