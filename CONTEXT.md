@@ -59,7 +59,14 @@ _Avoid_: "approved", "live" (say Confirmed), "draft" (say Pending).
 The web UI (extended in place from the donor's `ui.html`) that views Facts and Memories and is the
 **authoritative surface for confirming Pending Facts**. Confirmation happens here, out-of-band —
 **never inline in an agent session** (inline reintroduces the model discretion the design removes).
+It runs **on the host**, bound to localhost. Fact mutations require a **Console Token** (ADR 0006).
 _Avoid_: "dashboard", "admin panel".
+
+**Console Token**:
+A random secret the Console generates fresh at each launch. It reaches the browser only through
+the launch URL, and every Fact mutation must present it. It keeps an agent with shell access from
+confirming a Fact with a bare HTTP call.
+_Avoid_: "API key", "password" (it is neither persistent nor user-chosen).
 
 **Snapshot**:
 The pre-rendered, on-desktop file of Confirmed global Facts that the hook reads. Regenerated
