@@ -90,6 +90,22 @@ Register the hook in `~/.claude/settings.json`:
 The hook fails open. A missing, empty, or unreadable snapshot, or a read slower than 1.5 s,
 injects nothing, and the turn proceeds.
 
+## The Console
+
+`munr-console` is where you confirm or reject Pending facts
+([ADR 0006](docs/adr/0006-host-console-per-launch-token.md)). The CLI can only propose a fact. A
+proposal is not injected until you confirm it here.
+
+```bash
+munr-console               # binds 127.0.0.1:3334 and opens the launch URL in your browser
+munr-console --port 4000 --no-browser
+```
+
+Each launch prints a URL with a fresh Console Token. Confirm and reject work only from a tab
+opened through that URL. Launch the Console yourself, outside agent sessions, so no agent reads
+the token. The Console uses the same `MUNR_DATABASE_URL` / `MUNR_DB_*` settings and snapshot path
+as the CLI, so a confirmed global fact is injected on the next turn.
+
 ## Running the inherited base
 
 The donor stack still runs as-is while the divergence is built out:

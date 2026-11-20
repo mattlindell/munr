@@ -6,6 +6,18 @@
   <title>Claude Memory</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;500;600;700;800;900&family=Cardo:ital@1&display=swap" rel="stylesheet">
+  <script>
+    // Plain script ahead of the CDN tags, so the token leaves the address bar even if they fail to load.
+    var MUNR_TOKEN_KEY = 'munr_console_token';
+    (function () {
+      var url = new URL(window.location.href);
+      var token = url.searchParams.get('token');
+      if (!token) return;
+      sessionStorage.setItem(MUNR_TOKEN_KEY, token);
+      url.searchParams.delete('token');
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    })();
+  </script>
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -52,6 +64,26 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
+
+
+async function getJSON(url, options) {
+  const r = await fetch(url, options);
+  const body = await r.json().catch(() => null);
+  if (!r.ok) {
+    const err = new Error(body?.error || `HTTP ${r.status}`);
+    err.status = r.status;
+    throw err;
+  }
+  return body;
+}
+
+const asList = rows => (Array.isArray(rows) ? rows : []);
+
+function factId(fact) { return `${fact.scope}\u0000${fact.key}`; }
+
+function factPath(fact, verb) {
+  return `/api/facts/${encodeURIComponent(fact.scope)}/${encodeURIComponent(fact.key)}/${verb}`;
+}
 
 const PROJECT_COLORS = ['#312888','#009CFF','#7A4DFF','#FF947B','#1FA890','#D9325A','#F5A623','#4A90D9'];
 const projectColorCache = {};
@@ -102,7 +134,7 @@ function BrainMark() {
 }
 
 function AppHeader({ activeSection, healthy, latency }) {
-  const navItems = ['Timeline', 'Search', 'Preferences', 'Settings'];
+  const navItems = ['Facts', 'Timeline', 'Search', 'Preferences', 'Settings'];
 
   function scrollTo(section) {
     const el = document.getElementById(section);
@@ -498,6 +530,156 @@ function MemoryReader({ memory, related, onClose }) {
   );
 }
 
+function scopeLabel(scope) { return scope === '*' ? 'global' : scope; }
+
+function formatConfirmed(iso) { return iso ? new Date(iso).toLocaleString() : '—'; }
+
+const factCell = { padding: '8px 12px', borderBottom: '1px solid rgba(49,40,136,0.07)', verticalAlign: 'top', textAlign: 'left' };
+const factHead = { ...factCell, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--cs-grey)', borderBottom: '2px solid #312888' };
+const factTable = { width: '100%', borderCollapse: 'collapse', background: '#fff', fontSize: 13 };
+
+function EmptyFacts({ children }) {
+  return (
+    <div style={{ border: '1px dashed var(--border-subtle)', background: '#fff', padding: 24, textAlign: 'center', color: 'var(--cs-grey)', fontSize: 13 }}>
+      {children}
+    </div>
+  );
+}
+
+function FactsHeading({ eyebrow, note }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <Eyebrow>{eyebrow}</Eyebrow>
+      <div style={{ fontSize: 12, color: 'var(--cs-grey)', marginTop: 4 }}>{note}</div>
+    </div>
+  );
+}
+
+function PendingProposals({ pending, busy, onAct }) {
+  return (
+    <div>
+      <FactsHeading eyebrow="Pending Proposals" note="A proposed fact is not injected until you confirm it here." />
+      {pending.length === 0 ? <EmptyFacts>No pending proposals.</EmptyFacts> : (
+        <table style={factTable}>
+          <thead><tr>
+            <th style={factHead}>Key</th><th style={factHead}>Proposed value</th><th style={factHead}>Scope</th><th style={factHead}>Asserted by</th><th style={factHead}></th>
+          </tr></thead>
+          <tbody>
+            {pending.map(f => (
+              <tr key={factId(f)}>
+                <td style={factCell} className="mono">{f.key}</td>
+                <td style={factCell}>{f.value}</td>
+                <td style={factCell} className="mono">{scopeLabel(f.scope)}</td>
+                <td style={factCell} className="mono">{f.asserted_by}</td>
+                <td style={{ ...factCell, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button className="btn-primary" disabled={busy === factId(f)} onClick={() => onAct(f, 'confirm')} style={{ padding: '4px 12px', fontSize: 12 }}>Confirm</button>{' '}
+                  <button className="btn-danger" disabled={busy === factId(f)} onClick={() => onAct(f, 'reject')} style={{ padding: '4px 12px' }}>Reject</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function ConfirmedFacts({ facts }) {
+  return (
+    <div>
+      <FactsHeading eyebrow="Facts" note="Confirmed facts. Global facts are injected into every turn." />
+      {facts.length === 0 ? <EmptyFacts>No confirmed facts yet.</EmptyFacts> : (
+        <table style={factTable}>
+          <thead><tr>
+            <th style={factHead}>Key</th><th style={factHead}>Value</th><th style={factHead}>Scope</th><th style={factHead}>Asserted by</th><th style={factHead}>Confirmed</th>
+          </tr></thead>
+          <tbody>
+            {facts.map(f => (
+              <tr key={factId(f)}>
+                <td style={factCell} className="mono">{f.key}</td>
+                <td style={factCell}>{f.value}</td>
+                <td style={factCell} className="mono">{scopeLabel(f.scope)}</td>
+                <td style={factCell} className="mono">{f.asserted_by}</td>
+                <td style={factCell} className="mono">{formatConfirmed(f.confirmed_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+const UNREACHABLE = 'The facts database is unreachable. Check that it is running.';
+
+function actionError(e, fact, verb) {
+  switch (e.status) {
+    case 403: return 'The Console rejected this tab\'s token. Restart munr-console and open the new URL it prints.';
+    case 404: return `${fact.key} no longer exists.`;
+    case 409: return `${fact.key} is already confirmed, so it cannot be rejected.`;
+    case 503: return UNREACHABLE;
+    default:  return `Could not ${verb} ${fact.key}: ${e.message}`;
+  }
+}
+
+function FactsSection() {
+  const [facts, setFacts]     = useState([]);
+  const [pending, setPending] = useState([]);
+  const [error, setError]     = useState(null);
+  const [busy, setBusy]       = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [confirmed, proposed] = await Promise.all([getJSON('/api/facts'), getJSON('/api/facts/pending')]);
+      setFacts(asList(confirmed));
+      setPending(asList(proposed));
+      return true;
+    } catch (e) {
+      setError(e.status === 503 ? UNREACHABLE : `Could not load facts: ${e.message}`);
+      return false;
+    }
+  }, []);
+
+  useEffect(() => { load().then(ok => ok && setError(null)); }, [load]);
+
+  async function act(fact, verb) {
+    const token = sessionStorage.getItem(MUNR_TOKEN_KEY);
+    if (!token) {
+      setError('This tab has no Console Token. Open the URL that munr-console printed at launch.');
+      return;
+    }
+    setBusy(factId(fact));
+    let failure = null;
+    try {
+      await getJSON(factPath(fact, verb), { method: 'POST', headers: { 'X-Munr-Token': token } });
+    } catch (e) {
+      failure = actionError(e, fact, verb);
+    }
+    setBusy(null);
+    const loaded = await load();
+    if (failure) setError(failure);
+    else if (loaded) setError(null);
+  }
+
+  return (
+    <section id="facts" style={{ padding: '44px 32px', borderBottom: '1px solid var(--border-subtle)' }}>
+      <h2 style={{ fontSize: 24, fontWeight: 700, color: '#312888', letterSpacing: '-0.01em', marginBottom: 20 }}>
+        Stable facts{' '}
+        <em style={{ fontFamily: 'Cardo, Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: 'var(--cs-grey)' }}>injected every turn.</em>
+      </h2>
+      {error && (
+        <div role="alert" style={{ background: '#fff0ed', borderLeft: '3px solid var(--cs-coral)', padding: '10px 14px', fontSize: 13, color: '#c0392b', marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+      <div style={{ display: 'grid', gap: 32 }}>
+        <PendingProposals pending={pending} busy={busy} onAct={act} />
+        <ConfirmedFacts facts={facts} />
+      </div>
+    </section>
+  );
+}
+
 // ── PreferencesSection ────────────────────────────────────────────────────────
 function PrefCard({ category, items }) {
   return (
@@ -679,7 +861,7 @@ function SettingsSection({ stats, onDeleteProject, onWipeAll }) {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
-  const [section, setSection]         = useState('timeline');
+  const [section, setSection]         = useState('facts');
   const [stats, setStats]             = useState(null);
   const [healthy, setHealthy]         = useState(true);
   const [latency, setLatency]         = useState('—');
@@ -699,15 +881,15 @@ function App() {
 
   useEffect(() => {
     const t0 = Date.now();
-    fetch('/health').then(r => r.json()).then(d => { setHealthy(d.status === 'ok'); setLatency(Date.now() - t0); }).catch(() => setHealthy(false));
-    fetch('/api/stats').then(r => r.json()).then(setStats).catch(e => setError(String(e)));
-    fetch('/api/memories?limit=500').then(r => r.json()).then(setMemories).catch(() => {});
-    fetch('/api/projects').then(r => r.json()).then(setProjects).catch(() => {});
-    fetch('/api/memories?limit=20').then(r => r.json()).then(rows => setResults(rows.map(m => ({ ...m, sim: null })))).catch(() => {});
-    fetch('/api/preferences').then(r => r.json()).then(d => setPrefs(Array.isArray(d) ? d : [])).catch(() => {});
+    getJSON('/health').then(d => { setHealthy(d.status === 'ok'); setLatency(Date.now() - t0); }).catch(() => setHealthy(false));
+    getJSON('/api/stats').then(setStats).catch(e => { if (e.status !== 404) setError(String(e)); });
+    getJSON('/api/memories?limit=500').then(rows => setMemories(asList(rows))).catch(() => {});
+    getJSON('/api/projects').then(rows => setProjects(asList(rows))).catch(() => {});
+    getJSON('/api/memories?limit=20').then(rows => setResults(asList(rows).map(m => ({ ...m, sim: null })))).catch(() => {});
+    getJSON('/api/preferences').then(d => setPrefs(asList(d))).catch(() => {});
 
     // Scroll-spy: update active nav as user scrolls
-    const sections = ['timeline', 'search', 'preferences', 'settings'];
+    const sections = ['facts', 'timeline', 'search', 'preferences', 'settings'];
     function onScroll() {
       const scrollY = window.scrollY + 80;
       let active = sections[0];
@@ -724,8 +906,8 @@ function App() {
   async function handleSearch(q) {
     setQuery(q);
     if (!q.trim()) {
-      const rows = await fetch('/api/memories?limit=20').then(r => r.json()).catch(() => []);
-      setResults(rows.map(m => ({ ...m, sim: null })));
+      const rows = await getJSON('/api/memories?limit=20').catch(() => []);
+      setResults(asList(rows).map(m => ({ ...m, sim: null })));
       setSearchMeta(null);
       return;
     }
@@ -753,6 +935,7 @@ function App() {
       {error && <div style={{ background: '#fff0ed', borderBottom: '2px solid var(--cs-coral)', padding: '10px 32px', fontSize: 13, color: '#c0392b' }}>Database unreachable. Check docker compose is running. ({error})</div>}
       <AppHeader activeSection={section} healthy={healthy} latency={latency} />
       <StatStrip stats={stats} />
+      <FactsSection />
       <div id="search"><SearchBar query={query} onSearch={handleSearch} hitCount={searchMeta?.count} latencyMs={searchMeta?.ms} /></div>
       <div id="timeline"><TimelineRiver memories={memories} projects={projects} filter={filter} onFilterChange={setFilter} onSelect={handleSelect} selectedId={selectedId} /></div>
       <div ref={detailRef} style={{ padding: '32px 32px', display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 32, borderBottom: '1px solid var(--border-subtle)' }}>
