@@ -65,6 +65,31 @@ What changes:
 See [`docs/memory-store-handoff.md`](docs/memory-store-handoff.md) for the full plan, rationale,
 open questions, and risks.
 
+## The injection hook
+
+`munr-hook` is a `UserPromptSubmit` hook that injects Confirmed global facts into every turn
+([ADR 0003](docs/adr/0003-always-injected-hook-via-snapshot.md)). It reads a pre-rendered
+snapshot file and never touches the database. Every fact mutation regenerates the snapshot, and
+each `munr` CLI call refreshes it once it is older than the TTL.
+
+Register the hook in `~/.claude/settings.json`:
+
+```json
+"hooks": {
+  "UserPromptSubmit": [
+    { "hooks": [{ "type": "command", "command": "munr-hook", "timeout": 2 }] }
+  ]
+}
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MUNR_SNAPSHOT_PATH` | `~/.munr/snapshot.txt` | Snapshot file the store writes and the hook reads |
+| `MUNR_SNAPSHOT_TTL_SECONDS` | `3600` | Age at which a CLI call regenerates the snapshot |
+
+The hook fails open. A missing, empty, or unreadable snapshot, or a read slower than 1.5 s,
+injects nothing, and the turn proceeds.
+
 ## Running the inherited base
 
 The donor stack still runs as-is while the divergence is built out:

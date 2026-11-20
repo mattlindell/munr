@@ -158,6 +158,11 @@ def run(argv: list[str], store: FactStore | None = None) -> int:
             return EXIT_NO_DB
     assert store is not None
     try:
+        try:
+            store.refresh_snapshot_if_stale()
+        except OSError as exc:
+            # A backstop, not the command: report it and carry on with the read or write.
+            print(f"warning: could not refresh the facts snapshot: {exc}", file=sys.stderr)
         return _DISPATCH[args.verb](store, args)
     finally:
         if owns_store:
