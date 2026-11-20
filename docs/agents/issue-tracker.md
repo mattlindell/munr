@@ -16,7 +16,7 @@ Both accept **human-readable identifiers** (team key `PV`, issue `PV-123`, proje
 
 ### CLI gaps → use the MCP
 
-- **Creating labels** — `linearis labels` only *lists*; it can't create. New labels → MCP `create_issue_label`. (The triage and Wayfinder label groups already exist, so this is rarely needed.)
+- **Creating labels** — `linearis labels` only *lists*; it can't create. New labels → MCP `create_issue_label`. (The triage, Agent Status, and Scout label groups already exist workspace-wide, so this is rarely needed.)
 - Anything outside the CLI's domains (`issues`, `comments`, `labels`, `projects`, `cycles`, `milestones`, `documents`, `files`, `attachments`, `teams`, `users`, `initiatives`) — check `linearis usage` / `linearis <domain> usage`, and fall back to the MCP if absent.
 
 ## Fixed coordinates
@@ -50,6 +50,7 @@ Each operation lists the **CLI (default)** then the **MCP (fallback)**.
 - **Create an issue**: `linearis issues create "<title>" --team PV --project Munr --description "<md>" [--labels a,b] [--status "<name>"]` · MCP `save_issue` with `title`, `description` (real newlines, not `\n`), `team` = `PV`, `project` = `Munr`.
 - **Read an issue**: `linearis issues read PV-<n> --with-comment-threads` · MCP `get_issue` + `list_comments`.
 - **List / search issues**: `linearis issues list --team PV --project Munr [--label … --status … --assignee …]` or `linearis issues search "<query>"` · MCP `list_issues`.
+- **Make an issue a sub-issue of a parent**: `linearis issues create "<title>" … --parent-ticket PV-<parent>`, or `linearis issues update PV-<child> --parent-ticket PV-<parent>` afterwards · MCP `save_issue` with `parent`.
 - **Comment on an issue**: `linearis issues discuss PV-<n> --body "<md>"` (start a thread); reply with `linearis issues reply <thread-id> --body "…"` · MCP `save_comment`.
 - **Apply / change labels or status**: `linearis issues update PV-<n> --labels <names> [--label-mode add] [--status "<name>"]` · MCP `save_issue` with the new `labels`/`state`. (Use `--label-mode add` to append rather than overwrite.)
 - **Close**: `linearis issues update PV-<n> --status Done` (or `Canceled`) · MCP `save_issue` transitioning `state`.
@@ -66,15 +67,15 @@ Create a Linear issue in the Munr project — `linearis issues create … --team
 
 Not applicable — Linear is the request surface, not GitHub PRs. Code review happens on GitHub PRs, but incoming requests/bugs/features are triaged as Linear issues.
 
-## Wayfinding operations
+## Scouting operations
 
-Used by `/wayfinder`. Model the **map** and its **child tickets** as Linear issues:
+Used by `/scout`. Model the **map** and its **child tickets** as Linear issues.
 
-Wayfinder labels are a workspace-level **"Wayfinder" label group** with children named `wayfinder:map`, `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, `wayfinder:task` — apply the full prefixed name. (These already exist workspace-wide; no seeding needed.)
+Scout labels are a workspace-level **"Scout" label group** with children named `scout:map`, `scout:research`, `scout:prototype`, `scout:grilling`, `scout:task`. Apply the full prefixed name. These already exist, so no seeding is needed.
 
-- **Map**: a single issue labeled `wayfinder:map` holding the Notes / Decisions-so-far / Fog body.
-- **Child ticket**: an issue linked to the map as a Linear **sub-issue** via `linearis issues create "<title>" --team PV --project Munr --parent-ticket PV-<map> --labels wayfinder:<type>` (MCP `save_issue` with `parent` as fallback), where `<type>` is `research` / `prototype` / `grilling` / `task`. Once claimed, assign the ticket to the driving dev.
-- **Blocking**: Linear's native **blocks / blocked-by relations** — `linearis issues update PV-<child> --blocked-by PV-<blocker>` (MCP fallback). A child is unblocked when every blocker is `Done`/`Canceled`. Query blocked children with `linearis issues list --has-blockers`. Where a relation can't be created, fall back to a `Blocked by: PV-<n>, PV-<n>` line at the top of the child body.
+- **Map**: a single issue labeled `scout:map` holding the Notes / Decisions-so-far / Fog body.
+- **Child ticket**: an issue linked to the map as a Linear **sub-issue** via `linearis issues create "<title>" --team PV --project Munr --parent-ticket PV-<map> --labels scout:<type>` (MCP `save_issue` with `parent` as fallback), where `<type>` is `research` / `prototype` / `grilling` / `task`. Once claimed, assign the ticket to the driving dev.
+- **Blocking**: Linear's native **blocks / blocked-by relations**: `linearis issues update PV-<child> --blocked-by PV-<blocker>` (MCP fallback). A child is unblocked when every blocker is `Done`/`Canceled`. Query blocked children with `linearis issues list --has-blockers`. Where a relation can't be created, fall back to a `Blocked by: PV-<n>, PV-<n>` line at the top of the child body.
 - **Frontier query**: `linearis issues list --team PV --parent PV-<map>` for the map's open sub-issues (drop completed/canceled statuses); drop any with an open blocker (`--has-blockers` marks these) or an assignee; first in map order wins.
-- **Claim**: `linearis issues update PV-<n> --assignee <me>` — the session's first write.
-- **Resolve**: `linearis issues discuss PV-<n> --body "<answer>"`, `linearis issues update PV-<n> --status Done`, then append a context pointer to the map's Decisions-so-far.
+- **Claim**: `linearis issues update PV-<n> --assignee me`, the session's first write.
+- **Resolve**: `linearis issues discuss PV-<n> --body "<answer>"`, `linearis issues update PV-<n> --status Done`, then append a context pointer (gist + link) to the map's Decisions-so-far.

@@ -203,7 +203,7 @@ Issues and specs live in **Linear** — team **Photon Ventures** (`PV`), project
 
 ### Triage labels
 
-The five canonical triage states map 1:1 to Linear labels under the "Agentic State Machine" group. See `docs/agents/triage-labels.md`.
+The five canonical triage roles map 1:1 to Linear labels in the "Agentic State Machine" group; the three Foreman Claim roles map to labels in the "Agent Status" group. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
