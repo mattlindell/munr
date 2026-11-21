@@ -16,9 +16,11 @@ import json
 import secrets
 import socket
 import sys
+import threading
 import webbrowser
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -27,7 +29,9 @@ from typing import Protocol
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import psycopg
+from psycopg.conninfo import make_conninfo
 
+from . import config
 from .model import Fact
 from .rules import ConfirmAction, RejectAction
 from .store import FactStore
@@ -36,6 +40,7 @@ HOST = "127.0.0.1"
 _LOOPBACK_NAMES = frozenset({HOST, "localhost"})
 DEFAULT_PORT = 3334
 TOKEN_HEADER = "X-Munr-Token"
+CONNECT_TIMEOUT_SECONDS = 3
 
 
 class FactSource(Protocol):
@@ -46,16 +51,33 @@ class FactSource(Protocol):
 
 StoreOpener = Callable[[], AbstractContextManager[FactSource]]
 
-_CONFIRM_STATUS = {
+Action = ConfirmAction | RejectAction
+
+_STATUS: dict[Action, HTTPStatus] = {
     ConfirmAction.CONFIRM: HTTPStatus.OK,
     ConfirmAction.ALREADY: HTTPStatus.OK,
     ConfirmAction.MISSING: HTTPStatus.NOT_FOUND,
-}
-_REJECT_STATUS = {
     RejectAction.REJECT: HTTPStatus.OK,
     RejectAction.REFUSE_LIVE: HTTPStatus.CONFLICT,
     RejectAction.MISSING: HTTPStatus.NOT_FOUND,
 }
+
+
+@dataclass(frozen=True)
+class _Verb:
+    run: Callable[[FactSource, str, str], Action]
+    committed: Action  # the one outcome that writes, and so rewrites the Snapshot
+
+
+_VERBS = {
+    "confirm": _Verb(lambda store, scope, key: store.confirm(scope, key), ConfirmAction.CONFIRM),
+    "reject": _Verb(lambda store, scope, key: store.reject(scope, key), RejectAction.REJECT),
+}
+
+
+def open_store() -> FactStore:
+    dsn = make_conninfo(config.database_url(), connect_timeout=str(CONNECT_TIMEOUT_SECONDS))
+    return FactStore.connect(dsn)
 
 
 def new_token() -> str:
@@ -85,7 +107,7 @@ def _to_json(fact: Fact) -> dict[str, str | None]:
 
 class _ConsoleServer(ThreadingHTTPServer):
     # Windows SO_REUSEADDR lets a second socket bind a live port and take its requests.
-    allow_reuse_address = False
+    allow_reuse_address = not hasattr(socket, "SO_EXCLUSIVEADDRUSE")
 
     def server_bind(self) -> None:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
@@ -98,6 +120,7 @@ def make_server(
 ) -> ThreadingHTTPServer:
     """A loopback-only server whose handlers open a store per request via ``open_store``."""
     ui = _ui_html()
+    one_writer = threading.Lock()  # a later Snapshot rewrite must not lose to an earlier one
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: object) -> None:
@@ -108,6 +131,7 @@ def make_server(
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.end_headers()
             self.wfile.write(body)
 
@@ -170,32 +194,33 @@ def make_server(
                 self._error(HTTPStatus.FORBIDDEN, "missing or invalid Console Token")
                 return
             scope, key, verb = target
-            self._with_store(lambda s: _apply(s, scope, key, verb))
+            with one_writer:
+                self._with_store(lambda s: _apply(s, scope, key, verb))
 
     return _ConsoleServer((HOST, port), Handler)
 
 
-def _fact_action(path: str) -> tuple[str, str, str] | None:
+def _fact_action(path: str) -> tuple[str, str, _Verb] | None:
     parts = path.split("/")
     if len(parts) != 6 or parts[:3] != ["", "api", "facts"]:
         return None
-    if parts[5] not in ("confirm", "reject"):
-        return None
+    verb = _VERBS.get(parts[5])
     scope, key = unquote(parts[3]), unquote(parts[4])
-    if not scope or not key:
+    if verb is None or not scope or not key:
         return None
-    return scope, key, parts[5]
+    return scope, key, verb
 
 
-def _apply(store: FactSource, scope: str, key: str, verb: str) -> tuple[int, object]:
-    action: ConfirmAction | RejectAction
-    if verb == "confirm":
-        action = store.confirm(scope, key)
-        status = _CONFIRM_STATUS[action]
-    else:
-        action = store.reject(scope, key)
-        status = _REJECT_STATUS[action]
-    return status, {"scope": scope, "key": key, "result": action.name.lower()}
+def _apply(store: FactSource, scope: str, key: str, verb: _Verb) -> tuple[int, object]:
+    payload: dict[str, str] = {"scope": scope, "key": key}
+    try:
+        action = verb.run(store, scope, key)
+    except OSError:
+        # The store commits first and rewrites the Snapshot last; only that rewrite touches
+        # the filesystem. The mutation stands, so report it and flag the Snapshot.
+        action = verb.committed
+        payload["snapshot"] = "stale"
+    return _STATUS[action], {**payload, "result": action.name.lower()}
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -205,7 +230,12 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     token = new_token()
-    server = make_server(FactStore.connect, token, args.port)
+    try:
+        server = make_server(open_store, token, args.port)
+    except OSError as exc:
+        reason = f"cannot listen on port {args.port} ({exc.strerror})"
+        print(f"munr-console: {reason}; pass --port to pick another", file=sys.stderr)
+        sys.exit(2)
     url = launch_url(server.server_address[1], token)
     print(f"munr Console: {url}", flush=True)
     print("Open this URL to review Pending Facts. Ctrl+C stops the Console.", flush=True)

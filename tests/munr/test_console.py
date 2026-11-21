@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -25,6 +27,8 @@ from munr.rules import ConfirmAction, RejectAction, resolve_confirm, resolve_rej
 from .conftest import TEST_SCOPE
 
 FIELDS = {"scope", "key", "value", "asserted_by", "confirmed_at"}
+#: What a failed download hashes to. A pin carrying it was computed from a 404.
+EMPTY_INPUT_SHA384 = "OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb"
 
 
 class SeedableStore(console.FactSource, Protocol):
@@ -96,7 +100,7 @@ class Console:
         if host is not None:
             req.add_header("Host", host)
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:
                 return Response(resp.status, dict(resp.headers), resp.read())
         except urllib.error.HTTPError as err:
             return Response(err.code, dict(err.headers), err.read())
@@ -220,7 +224,18 @@ def test_ui_serves_the_console_page(app: Console) -> None:
 
     assert resp.status == 200
     assert resp.headers["Content-Type"].startswith("text/html")
+    assert resp.headers["Referrer-Policy"] == "no-referrer"
     assert b"Pending Proposals" in resp.body
+
+
+def test_every_external_script_is_pinned_with_integrity(app: Console) -> None:
+    tags = re.findall(r"<script[^>]*\ssrc=[^>]*>", app.get("/ui").body.decode())
+
+    assert tags
+    for tag in tags:
+        assert re.search(r'integrity="sha384-[A-Za-z0-9+/=]+"', tag), tag
+        assert "@latest" not in tag, tag
+        assert EMPTY_INPUT_SHA384 not in tag, f"hash of an empty download: {tag}"
 
 
 def test_confirming_a_pending_global_fact_promotes_it_and_updates_the_snapshot(
@@ -244,6 +259,28 @@ def test_confirming_an_already_confirmed_fact_is_idempotent(app: Console) -> Non
 
     assert resp.status == 200
     assert app.facts("/api/facts", "pv4-live") == before
+
+
+@pytest.mark.parametrize("verb", ["confirm", "reject"])
+def test_a_snapshot_failure_after_the_commit_reports_the_result_as_stale(
+    app: Console, verb: str
+) -> None:
+    app.seed(GLOBAL_SCOPE, "pv4-proposed", "maybe", confirmed=False)
+    app.snapshot_path.unlink(missing_ok=True)
+    app.snapshot_path.mkdir()  # the rewrite cannot replace a directory
+    (app.snapshot_path / "keep").touch()
+
+    resp = app.act(GLOBAL_SCOPE, "pv4-proposed", verb, app.token)
+
+    assert resp.status == 200
+    assert resp.json() == {
+        "scope": GLOBAL_SCOPE,
+        "key": "pv4-proposed",
+        "result": verb,
+        "snapshot": "stale",
+    }
+    assert (GLOBAL_SCOPE, "pv4-proposed") not in app.keys("/api/facts/pending")
+    assert ((GLOBAL_SCOPE, "pv4-proposed") in app.keys("/api/facts")) is (verb == "confirm")
 
 
 @pytest.mark.parametrize("verb", ["confirm", "reject"])
@@ -332,7 +369,7 @@ class BrokenStore:
         raise psycopg.errors.UndefinedTable("relation \"facts\" does not exist")
 
     def confirm(self, scope: str, key: str) -> ConfirmAction:
-        raise OSError("snapshot directory is read-only")
+        raise psycopg.errors.UndefinedTable("relation \"facts\" does not exist")
 
     def reject(self, scope: str, key: str) -> RejectAction:
         raise psycopg.DataError("bad byte")
@@ -386,6 +423,40 @@ def test_a_second_console_cannot_share_the_port() -> None:
             console.make_server(opener, console.new_token(), port=port).server_close()
     finally:
         first.server_close()
+
+
+def test_a_busy_port_is_a_one_line_error() -> None:
+    def opener() -> AbstractContextManager[console.FactSource]:
+        raise AssertionError("binding must not open the store")
+
+    held = console.make_server(opener, console.new_token(), port=0)
+    try:
+        port = str(held.server_address[1])
+        result = subprocess.run(
+            [sys.executable, "-m", "munr.console", "--port", port, "--no-browser"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    finally:
+        held.server_close()
+
+    assert result.returncode == 2
+    assert "--port" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_a_silent_database_host_times_out_to_a_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MUNR_DATABASE_URL", "postgresql://munr@10.255.255.1:5432/munr")
+    token = console.new_token()
+
+    with serve(console.open_store, token) as base:
+        started = time.monotonic()
+        resp = Console(base, token, None, Path()).get("/api/facts")
+        elapsed = time.monotonic() - started
+
+    assert resp.status == 503
+    assert elapsed < console.CONNECT_TIMEOUT_SECONDS + 3
 
 
 def test_server_binds_loopback_only() -> None:
